@@ -1,3 +1,9 @@
+import sys
+import os
+# Ensure src directory is in sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
 from slam_llm.pipeline.inference_batch import main as inference
 
 import hydra

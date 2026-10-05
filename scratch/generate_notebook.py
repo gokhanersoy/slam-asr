@@ -50,11 +50,14 @@ notebook = {
    "source": [
     "# Clone repo / setup environment if running directly in Colab\n",
     "import os\n",
+    "import sys\n",
+    "\n",
     "if not os.path.exists('src'):\n",
     "    !git clone https://github.com/X-LANCE/SLAM-LLM.git slam_repo\n",
     "    %cd slam_repo\n",
     "\n",
-    "# Install dependencies\n",
+    "# Ensure src is in Python path and install package\n",
+    "!pip install -q -e .\n",
     "!pip install -q torch torchaudio transformers>=4.31.0 accelerate bitsandbytes peft hydra-core>=1.3.2 omegaconf openai-whisper soundfile librosa jiwer gdown scipy sentencepiece optimum"
    ]
   },
@@ -86,7 +89,7 @@ notebook = {
     "if not os.path.exists(wavlm_ckpt_path):\n",
     "    print('Downloading WavLM-Large checkpoint...')\n",
     "    !wget -q -O {wavlm_ckpt_path} https://github.com/microsoft/unilm/raw/master/wavlm/WavLM-Large.pt || \\\n",
-    "    python -c \"import gdown; gdown.download('https://drive.google.com/uc?id=12-cB34qCTvByWT-QtOcZaqwwO21FLSqU', '{wavlm_ckpt_path}', quiet=False)\"\n",
+    "    python3 -c \"import gdown; gdown.download('https://drive.google.com/uc?id=12-cB34qCTvByWT-QtOcZaqwwO21FLSqU', '{wavlm_ckpt_path}', quiet=False)\"\n",
     "\n",
     "# 2. Download Pre-trained Linear Projector checkpoint (~18.88M params)\n",
     "projector_ckpt_path = 'checkpoints/wavlm_linear_projector.pt'\n",
@@ -188,8 +191,8 @@ notebook = {
     "os.makedirs(output_dir, exist_ok=True)\n",
     "decode_log_prefix = os.path.join(output_dir, 'decode_test_clean_beam4')\n",
     "\n",
-    "# Run inference using python hydra script\n",
-    "!python examples/asr_librispeech/inference_asr_batch.py \\\n",
+    "# Run inference with PYTHONPATH set to include src/\n",
+    "!PYTHONPATH=src:examples/asr_librispeech python3 examples/asr_librispeech/inference_asr_batch.py \\\n",
     "    --config-path \"conf\" \\\n",
     "    --config-name \"prompt.yaml\" \\\n",
     "    ++model_config.llm_name=\"vicuna-7b-v1.5\" \\\n",
@@ -231,6 +234,10 @@ notebook = {
    "metadata": {},
    "outputs": [],
    "source": [
+    "import sys\n",
+    "import os\n",
+    "sys.path.insert(0, 'src')\n",
+    "\n",
     "from examples.asr_librispeech.eval_wer import calculate_wer\n",
     "\n",
     "pred_file = f\"{decode_log_prefix}_pred\"\n",
@@ -287,4 +294,4 @@ notebook = {
 
 with open('/Users/gokhanersoy/Documents/GitHub/slam-asr/slam_asr_librispeech_colab.ipynb', 'w', encoding='utf-8') as f:
     json.dump(notebook, f, indent=2)
-print("Notebook created successfully!")
+print("Notebook updated successfully!")
