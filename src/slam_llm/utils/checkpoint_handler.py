@@ -6,8 +6,11 @@ from datetime import datetime
 import torch
 import time
 from collections import OrderedDict
-from deepspeed.utils.zero_to_fp32 import (
-    convert_zero_checkpoint_to_fp32_state_dict)
+try:
+    from deepspeed.utils.zero_to_fp32 import (
+        convert_zero_checkpoint_to_fp32_state_dict)
+except ImportError:
+    convert_zero_checkpoint_to_fp32_state_dict = None
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
     StateDictType,
