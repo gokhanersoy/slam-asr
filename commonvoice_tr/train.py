@@ -77,7 +77,7 @@ def main(cfg: DictConfig):
         num_training_steps=total_steps
     )
 
-    scaler = torch.cuda.amp.GradScaler(enabled=train_cfg.use_fp16 and torch.cuda.is_available())
+    scaler = torch.amp.GradScaler('cuda', enabled=train_cfg.use_fp16 and torch.cuda.is_available())
 
     # 4. Training Loop
     global_step = 0
@@ -95,7 +95,7 @@ def main(cfg: DictConfig):
             modality_mask = batch["modality_mask"].to(device)
             labels = batch["labels"].to(device)
 
-            with torch.cuda.amp.autocast(enabled=train_cfg.use_fp16):
+            with torch.amp.autocast('cuda', enabled=train_cfg.use_fp16):
                 outputs = model(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
@@ -131,7 +131,7 @@ def main(cfg: DictConfig):
                             v_mmask = val_batch["modality_mask"].to(device)
                             v_labels = val_batch["labels"].to(device)
 
-                            with torch.cuda.amp.autocast(enabled=train_cfg.use_fp16):
+                            with torch.amp.autocast('cuda', enabled=train_cfg.use_fp16):
                                 v_out = model(
                                     input_ids=v_ids,
                                     attention_mask=v_mask,

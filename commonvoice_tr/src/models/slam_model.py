@@ -149,6 +149,7 @@ class SLAMASRModel(nn.Module):
             inputs_embeds = self.llm.model.model.embed_tokens(input_ids)
 
         if modality_mask is not None and audio_mel is not None:
+            encoder_outs = encoder_outs.to(inputs_embeds.dtype)
             modality_mask_start_indices = (modality_mask == True).float().argmax(dim=1)
             modality_lengths = torch.clamp(modality_mask.sum(dim=1), max=encoder_outs.shape[1]).tolist()
 
@@ -186,6 +187,7 @@ class SLAMASRModel(nn.Module):
         else:
             prompt_embeds = self.llm.model.embed_tokens(prompt_ids)
 
+        encoder_outs = encoder_outs.to(prompt_embeds.dtype)
         inputs_embeds = torch.cat((encoder_outs, prompt_embeds), dim=1)
         attention_mask = torch.ones(inputs_embeds.size()[:-1], dtype=torch.long, device=device)
 
