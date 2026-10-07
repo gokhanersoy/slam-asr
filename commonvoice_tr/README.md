@@ -4,17 +4,22 @@ Bu proje, **SLAM-LLM (Speech-Language Model Framework)** çalışmasını ([arXi
 
 ---
 
+## ⚡ Özellikler ve Çalışma Mantığı
+
+- **Google Drive Gerektirmez:** Kodlar doğrudan GitHub üzerinden Colab oturumuna klonlanır.
+- **Otomatik Hugging Face Entegrasyonu:** Eğitim bittiğinde eğitilen model ağırlıkları (Projector + LoRA) otomatik olarak kendi Hugging Face Hub hesabınıza aktarılır (`push_to_hub.py`).
+- **Maksimum Performans:** Veri seti işleme ve önbellekleme Colab'ın yüksek hızlı yerel SSD diski üzerinde gerçekleşir.
+
+---
+
 ## 📐 Mimari ve Metodoloji
 
-SLAM-LLM yaklaşımına sadık kalınarak mimari 3 ana bileşenden oluşturulmuştur:
-
 1. **Konuşma Kodlayıcı (Speech Encoder):**
-   - `openai/whisper-large-v3`
-   - Mel-spektrogram (128 mel kanalı) girdisini işler.
+   - `openai/whisper-large-v3` (128 mel kanalı).
    - Eğitim süresince **dondurulmuştur (Frozen)**.
 
 2. **Hizalama Katmanı (Linear Projector):**
-   - 5x Frame Concatenation + 2-Layer MLP Projection (`Linear(1280 * 5, 2048) -> ReLU -> Linear(2048, LLM_DIM)`).
+   - 5x Frame Concatenation + 2-Katmanlı MLP (`Linear(1280 * 5, 2048) -> ReLU -> Linear(2048, LLM_DIM)`).
    - Konuşma vektörlerinin zaman boyutunu 5 kat küçülterek LLM gömme (embedding) uzayına hizalar.
    - **Eğitilebilir (Trainable)**.
 
@@ -32,6 +37,7 @@ commonvoice_tr/
 ├── README.md                          # Proje açıklaması ve Türkçe ASR rehberi
 ├── requirements.txt                   # Gerekli bağımlılıklar
 ├── commonvoice_tr_slam_llm.ipynb      # Google Colab uçtan uca eğitim notebook'u
+├── push_to_hub.py                     # Hugging Face Hub model yükleme betiği
 ├── conf/
 │   └── prompt.yaml                    # Hydra model, veri seti ve eğitim konfigürasyonu
 ├── src/
@@ -50,39 +56,24 @@ commonvoice_tr/
 
 ---
 
-## ⚡ Hızlı Başlangıç (Google Colab)
+## 💻 Google Colab & Yerel Kullanım
 
-1. Notebook dosyasını Google Colab'a yükleyin: [`commonvoice_tr_slam_llm.ipynb`](file:///Users/gokhanersoy/Documents/GitHub/slam-asr/commonvoice_tr/commonvoice_tr_slam_llm.ipynb)
-2. GPU çalışma zamanını seçin (T4, V100, L4 veya A100).
-3. Notebook adımlarını sırasıyla çalıştırın.
+### 1. Colab'da Çalıştırma (Tavsiye Edilen)
+Notebook dosyasını açıp adımları takip edin: [`commonvoice_tr_slam_llm.ipynb`](file:///Users/gokhanersoy/Documents/GitHub/slam-asr/commonvoice_tr/commonvoice_tr_slam_llm.ipynb)
 
----
-
-## 💻 Yerel (Local) Kullanım
-
-### 1. Bağımlılıkların Kurulumu
 ```bash
-pip install -r requirements.txt
-```
+# Kodları Colab lokal diskine indirin
+!git clone https://github.com/gokhanersoy/slam-asr.git
+%cd /content/slam-asr/commonvoice_tr
+!pip install -q -r requirements.txt
 
-### 2. Veri Setinin Hazırlanması
-Mozilla Common Voice Türkçe veri setini indirip JSONL formatına dönüştürmek için:
-```bash
-python prepare_data.py --output_dir data
-```
+# Veriyi hazırlayın ve eğitimi başlatın
+!python prepare_data.py --output_dir data
+!python train.py
 
-### 3. Model Eğitimi (Fine-Tuning)
-```bash
-python train.py
-```
-Özel parametrelerle çalıştırmak için:
-```bash
-python train.py train_config.batch_size_training=4 train_config.gradient_accumulation_steps=4 train_config.num_epochs=5
-```
-
-### 4. Değerlendirme (WER / CER Hesabı)
-```bash
-python evaluate.py --checkpoint_path checkpoints/slam_qwen_tr/best_checkpoint.pt
+# Test edin ve Hugging Face Hub'a yükleyin
+!python evaluate.py
+!python push_to_hub.py --repo_id kullanici_adiniz/slam-asr-tr-commonvoice
 ```
 
 ---
@@ -93,10 +84,4 @@ python evaluate.py --checkpoint_path checkpoints/slam_qwen_tr/best_checkpoint.pt
 | :--- | :--- | :--- |
 | Whisper Large V3 (Zero-shot Baseline) | Common Voice TR | ~11.5% - 13.0% |
 | Wav2Vec2-Large-TR (Fine-tuned) | Common Voice TR | ~9.2% |
-| **SLAM-ASR (Whisper-v3 + Qwen2.5-7B + Linear Projector)** | Common Voice TR | **< 6.5% (Hedeflenen SOTA)** |
-
----
-
-## 📝 Notlar
-- Qwen2.5-7B-Instruct dil modeli Türkçe karakter setini ve morfolojisini LLaMA-1/2 modellerine kıyasla çok daha verimli temsil etmektedir.
-- Google Colab T4/V100 ekran kartlarında bellek optimizasyonu için 4-bit quantization (`bitsandbytes`) konfigürasyonu varsayılan olarak etkinleştirilmiştir.
+| **SLAM-ASR (Whisper-v3 + Qwen2.5-7B + Linear Projector)** | Common Voice TR | **< 6.5% (Hedef)** |
