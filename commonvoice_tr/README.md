@@ -6,9 +6,9 @@ Bu proje, **SLAM-LLM (Speech-Language Model Framework)** çalışmasını ([arXi
 
 ## ⚡ Özellikler ve Çalışma Mantığı
 
-- **Google Drive Yerel Veri Seti Desteği:** Mozilla Common Voice veri setiniz doğrudan Google Drive yolunuzdan (`cv-corpus-25.0-2026-03-09`) okunur (`train.tsv`, `dev.tsv`, `test.tsv` ve `clips/`).
+- **Google Drive Yerel Veri Desteği:** Google Drive üzerindeki `datasets/speech/CommonVoice/cv-corpus-25.0-2026-03-09/tr` veri seti doğrudan okunur (Hugging Face sınırlamalarından etkilenmez).
 - **Otomatik Hugging Face Entegrasyonu:** Eğitim bittiğinde eğitilen model ağırlıkları (Projector + LoRA) otomatik olarak kendi Hugging Face Hub hesabınıza aktarılır (`push_to_hub.py`).
-- **Maksimum Performans:** Ses dönüşümleri ve önbellekleme Colab'ın yüksek hızlı yerel SSD diski üzerine aktarılarak yüksek eğitim hızı elde edilir.
+- **Maksimum Performans:** Veri işleme ve önbellekleme Colab'ın yüksek hızlı yerel SSD diski üzerinde gerçekleşir.
 
 ---
 
@@ -49,7 +49,7 @@ commonvoice_tr/
 │   │   └── speech_dataset.py          # JSONL formatlı ses-metin veri yükleyicisi
 │   └── utils/
 │       └── compute_wer.py             # Türkçe karakter normalizasyonu ve WER/CER hesabı
-├── prepare_data.py                    # Yerel Common Voice (TSV + clips) dönüştürücü
+├── prepare_data.py                    # Drive TSV / Local Common Voice dönüştürücü
 ├── train.py                           # Fine-tuning başlatıcı betik
 └── evaluate.py                        # Test seti WER/CER değerlendirme betiği
 ```
@@ -62,7 +62,7 @@ commonvoice_tr/
 Notebook dosyasını açıp adımları takip edin: [`commonvoice_tr_slam_llm.ipynb`](file:///Users/gokhanersoy/Documents/GitHub/slam-asr/commonvoice_tr/commonvoice_tr_slam_llm.ipynb)
 
 ```bash
-# Drive bağlayın ve repo'yu Colab ortamına indirin
+# Drive bağlayın ve kodları klonlayın
 from google.colab import drive
 drive.mount('/content/drive')
 
@@ -71,8 +71,8 @@ drive.mount('/content/drive')
 %cd /content/slam-asr/commonvoice_tr
 !pip install -q -r requirements.txt
 
-# Google Drive üzerindeki Common Voice klasöründen veriyi hazırlayın
-!python prepare_data.py --cv_dir "/content/drive/MyDrive/datasets/speech/ComonVoice/cv-corpus-25.0-2026-03-09" --output_dir data
+# Drive üzerindeki Common Voice 25.0 verisini hazırlayın
+!python prepare_data.py --cv_dir /content/drive/MyDrive/datasets/speech/CommonVoice/cv-corpus-25.0-2026-03-09/tr --output_dir data
 
 # Eğitimi başlatın
 !python train.py
