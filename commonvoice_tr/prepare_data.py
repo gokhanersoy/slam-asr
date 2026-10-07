@@ -1,203 +1,212 @@
 #!/usr/bin/env python3
 """
-Dataset Preparation Script for Common Voice Turkish (TR)
-Supports loading directly from Google Drive / Local TSV directory (cv-corpus-25.0 / 17.0 / etc.)
-or HuggingFace datasets as fallback.
-Generates SLAM-LLM format JSONL files: train.jsonl, val.jsonl, test.jsonl
+Dataset Preparation Script for Common Voice Turkish 27.0 via Mozilla Data Collective (MDC)
+Downloads dataset directly from mozilladatacollective.com using CV_API key,
+extracts tar.gz archive, converts audio to 16kHz WAV, and generates SLAM-LLM JSONL manifests.
 """
 
 import os
 import sys
+import tarfile
 import csv
 import json
 import argparse
+import requests
 import torch
 import soundfile as sf
 import torchaudio
-import whisper
 from tqdm import tqdm
 
-def process_local_tsv_split(tsv_path, clips_dir, split_name, output_dir, audio_dir, max_samples=None):
-    os.makedirs(audio_dir, exist_ok=True)
-    jsonl_path = os.path.join(output_dir, f"{split_name}.jsonl")
+MDC_DATASET_ID = "cmu5wkah500c2o10719lem8m8"
+MDC_API_URL = f"https://mozilladatacollective.com/api/datasets/{MDC_DATASET_ID}/download"
+
+def get_cv_api_key(args_api_key=None):
+    if args_api_key:
+        return args_api_key
+    if "CV_API" in os.environ:
+        return os.environ["CV_API"]
+    try:
+        from google.colab import userdata
+        key = userdata.get('CV_API')
+        if key:
+            return key
+    except Exception:
+        pass
+    return None
+
+def download_dataset_from_mdc(api_key, save_path):
+    print("Fetching presigned download URL from Mozilla Data Collective...")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    response = requests.post(MDC_API_URL, headers=headers)
+    if response.status_code != 200:
+        print(f"❌ MDC API Error ({response.status_code}): {response.text}")
+        sys.exit(1)
     
+    data = response.json()
+    download_url = data.get("downloadUrl")
+    if not download_url:
+        print(f"❌ No downloadUrl found in response: {data}")
+        sys.exit(1)
+
+    print(f"Downloading Common Voice 27.0 Turkish dataset to {save_path} ...")
+    dl_res = requests.get(download_url, stream=True)
+    total_size = int(dl_res.headers.get('content-length', 0))
+    
+    with open(save_path, 'wb') as f, tqdm(
+        desc="Downloading",
+        total=total_size,
+        unit='iB',
+        unit_scale=True,
+        unit_divisor=1024,
+    ) as bar:
+        for chunk in dl_res.iter_content(chunk_size=1024 * 1024):
+            size = f.write(chunk)
+            bar.update(size)
+
+    print("✅ Download completed!")
+
+def extract_tar_archive(tar_path, extract_dir):
+    print(f"Extracting archive {tar_path} -> {extract_dir} ...")
+    os.makedirs(extract_dir, exist_ok=True)
+    with tarfile.open(tar_path, "r:gz") as tar:
+        tar.extractall(path=extract_dir)
+    print("✅ Extraction completed!")
+
+def find_dataset_root(base_dir):
+    # Find directory containing train.tsv / dev.tsv
+    for root, dirs, files in os.walk(base_dir):
+        if "train.tsv" in files:
+            return root
+    return base_dir
+
+def process_tsv_split(tsv_path, clips_dir, split_name, output_dir, audio_dir, max_samples=None):
     if not os.path.exists(tsv_path):
-        print(f"⚠️ Warning: TSV file not found: {tsv_path}")
+        print(f"⚠️ Warning: TSV file {tsv_path} not found. Skipping split '{split_name}'.")
         return
 
-    records = []
-    with open(tsv_path, "r", encoding="utf-8") as f_in:
-        reader = csv.DictReader(f_in, delimiter="\t")
-        for row in reader:
-            clip_name = row.get("path", "").strip()
-            text = row.get("sentence", "").strip()
-            if clip_name and text:
-                records.append((clip_name, text))
-                
-    if max_samples:
-        records = records[:max_samples]
-
-    total_duration_sec = 0.0
-    exported_records = 0
-
-    with open(jsonl_path, "w", encoding="utf-8") as f_out:
-        for idx, (clip_name, text) in enumerate(tqdm(records, desc=f"Exporting local {split_name}")):
-            clip_full_path = os.path.join(clips_dir, clip_name)
-            if not os.path.exists(clip_full_path):
-                base = os.path.splitext(clip_name)[0]
-                possible_paths = [
-                    os.path.join(clips_dir, f"{base}.mp3"),
-                    os.path.join(clips_dir, f"{base}.wav"),
-                    os.path.join(clips_dir, f"{base}.flac"),
-                ]
-                found = False
-                for p in possible_paths:
-                    if os.path.exists(p):
-                        clip_full_path = p
-                        found = True
-                        break
-                if not found:
-                    continue
-
-            try:
-                audio_array = whisper.load_audio(clip_full_path)
-            except Exception:
-                continue
-
-            sr = 16000
-            wav_filename = f"{split_name}_{idx:06d}.wav"
-            wav_path = os.path.join(audio_dir, wav_filename)
-
-            sf.write(wav_path, audio_array, sr)
-            duration = len(audio_array) / sr
-            total_duration_sec += duration
-
-            record = {
-                "key": f"CV25_TR_{split_name}_{idx:06d}",
-                "source": os.path.abspath(wav_path),
-                "target": text,
-                "duration": round(duration, 2)
-            }
-            f_out.write(json.dumps(record, ensure_ascii=False) + "\n")
-            exported_records += 1
-
-    print(f"[{split_name.upper()}] Exported {exported_records} items ({total_duration_sec / 3600.0:.2f} hours) -> {jsonl_path}")
-
-def process_hf_split(dataset_split, split_name, output_dir, audio_dir):
     os.makedirs(audio_dir, exist_ok=True)
     jsonl_path = os.path.join(output_dir, f"{split_name}.jsonl")
-    
+
     total_duration_sec = 0.0
     exported_records = 0
-    
+
+    with open(tsv_path, "r", encoding="utf-8") as f_in:
+        reader = csv.DictReader(f_in, delimiter="\t")
+        rows = list(reader)
+
+    if max_samples and max_samples < len(rows):
+        rows = rows[:max_samples]
+
     with open(jsonl_path, "w", encoding="utf-8") as f_out:
-        for idx, example in enumerate(tqdm(dataset_split, desc=f"Exporting HF {split_name}")):
-            audio_info = example.get("audio")
-            text = example.get("sentence", "").strip()
-            
-            if not text or not audio_info:
+        for idx, row in enumerate(tqdm(rows, desc=f"Processing {split_name}")):
+            audio_filename = row.get("path", "")
+            text = row.get("sentence", "").strip()
+
+            if not audio_filename or not text:
                 continue
-            
-            array = audio_info["array"]
-            sr = audio_info["sampling_rate"]
-            
-            if sr != 16000:
-                audio_tensor = torch.from_numpy(array).unsqueeze(0).float()
-                resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=16000)
-                audio_tensor = resampler(audio_tensor)
-                array = audio_tensor.squeeze(0).numpy()
-                sr = 16000
+
+            # Full path to original clip (mp3/wav)
+            src_audio_path = os.path.join(clips_dir, audio_filename)
+            if not os.path.exists(src_audio_path):
+                # Try adding extension if missing
+                if os.path.exists(src_audio_path + ".mp3"):
+                    src_audio_path += ".mp3"
+                elif os.path.exists(src_audio_path + ".wav"):
+                    src_audio_path += ".wav"
+                else:
+                    continue
 
             wav_filename = f"{split_name}_{idx:06d}.wav"
             wav_path = os.path.join(audio_dir, wav_filename)
-            
-            sf.write(wav_path, array, sr)
-            duration = len(array) / sr
-            total_duration_sec += duration
-            
-            record = {
-                "key": f"CV_TR_{split_name}_{idx:06d}",
-                "source": os.path.abspath(wav_path),
-                "target": text,
-                "duration": round(duration, 2)
-            }
-            f_out.write(json.dumps(record, ensure_ascii=False) + "\n")
-            exported_records += 1
+
+            try:
+                waveform, sr = torchaudio.load(src_audio_path)
+                if waveform.shape[0] > 1:
+                    waveform = torch.mean(waveform, dim=0, keepdim=True)
+
+                if sr != 16000:
+                    resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=16000)
+                    waveform = resampler(waveform)
+                    sr = 16000
+
+                array = waveform.squeeze(0).numpy()
+                sf.write(wav_path, array, sr)
+                duration = len(array) / sr
+                total_duration_sec += duration
+
+                record = {
+                    "key": f"CV27_TR_{split_name}_{idx:06d}",
+                    "source": os.path.abspath(wav_path),
+                    "target": text,
+                    "duration": round(duration, 2)
+                }
+                f_out.write(json.dumps(record, ensure_ascii=False) + "\n")
+                exported_records += 1
+            except Exception as e:
+                continue
 
     print(f"[{split_name.upper()}] Exported {exported_records} items ({total_duration_sec / 3600.0:.2f} hours) -> {jsonl_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Prepare Common Voice Turkish Dataset for SLAM-ASR")
-    parser.add_argument("--cv_dir", type=str, default="/content/drive/MyDrive/datasets/speech/CommonVoice/cv-corpus-25.0-2026-03-09/tr", help="Path to local Common Voice TR corpus directory")
-    parser.add_argument("--dataset_name", type=str, default="mozilla-foundation/common_voice_17_0", help="HuggingFace dataset ID (fallback)")
-    parser.add_argument("--output_dir", type=str, default="data", help="Output directory for jsonl manifests and wavs")
-    parser.add_argument("--token", type=str, default=None, help="HuggingFace Access Token")
-    parser.add_argument("--max_train_samples", type=int, default=None, help="Optional max train samples for quick experiments")
+    parser = argparse.ArgumentParser(description="Prepare Common Voice 27.0 Turkish Dataset via Mozilla Data Collective")
+    parser.add_argument("--api_key", type=str, default=None, help="Mozilla Data Collective API key (CV_API)")
+    parser.add_argument("--tar_path", type=str, default="data/cv27_tr.tar.gz", help="Path to save or existing dataset tar.gz")
+    parser.add_argument("--output_dir", type=str, default="data", help="Output directory for manifests and converted wavs")
+    parser.add_argument("--max_train_samples", type=int, default=None, help="Optional max train samples")
     parser.add_argument("--max_val_samples", type=int, default=None, help="Optional max val samples")
     parser.add_argument("--max_test_samples", type=int, default=None, help="Optional max test samples")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
-    audio_base_dir = os.path.join(args.output_dir, "audio")
+    extract_dir = os.path.join(args.output_dir, "raw_extracted")
 
-    # 1. Try local Google Drive / TSV corpus directory first
-    if args.cv_dir and os.path.exists(args.cv_dir):
-        print(f"📁 Local Common Voice directory found: {args.cv_dir}")
-        clips_dir = os.path.join(args.cv_dir, "clips")
+    api_key = get_cv_api_key(args.api_key)
 
-        # Map splits to TSVs
-        split_tsv_map = {
-            "train": os.path.join(args.cv_dir, "train.tsv"),
-            "val": os.path.join(args.cv_dir, "dev.tsv") if os.path.exists(os.path.join(args.cv_dir, "dev.tsv")) else os.path.join(args.cv_dir, "validated.tsv"),
-            "test": os.path.join(args.cv_dir, "test.tsv")
-        }
+    # Step 1: Download if tar.gz does not exist
+    if not os.path.exists(args.tar_path) and not os.path.exists(extract_dir):
+        if not api_key:
+            print("\n" + "=" * 70)
+            print("⚠️ HATA: Mozilla Data Collective CV_API Anahtarı Bulunamadı!")
+            print("=" * 70)
+            print("Lütfen Colab Secrets (Gizli Anahtarlar) alanına `CV_API` adıyla")
+            print("Mozilla Data Collective API anahtarınızı ekleyin.")
+            print("=" * 70 + "\n")
+            sys.exit(1)
+        
+        download_dataset_from_mdc(api_key, args.tar_path)
 
-        for split_name, tsv_path in split_tsv_map.items():
-            max_s = args.max_train_samples if split_name == "train" else (args.max_val_samples if split_name == "val" else args.max_test_samples)
-            process_local_tsv_split(
-                tsv_path=tsv_path,
-                clips_dir=clips_dir,
-                split_name=split_name,
-                output_dir=args.output_dir,
-                audio_dir=os.path.join(audio_base_dir, split_name),
-                max_samples=max_s
-            )
-        return
+    # Step 2: Extract tar.gz if extract_dir does not exist
+    if os.path.exists(args.tar_path) and not os.path.exists(extract_dir):
+        extract_tar_archive(args.tar_path, extract_dir)
 
-    # 2. Fallback to Hugging Face datasets if local directory not found
-    from datasets import load_dataset, Audio
-    token = args.token or os.environ.get("HF_TOKEN")
-    if not token:
-        try:
-            from google.colab import userdata
-            token = userdata.get('HF_TOKEN')
-        except Exception:
-            token = True
+    root_dir = find_dataset_root(extract_dir)
+    clips_dir = os.path.join(root_dir, "clips")
+    audio_output_base = os.path.join(args.output_dir, "audio")
 
-    print(f"Loading Turkish Common Voice dataset from HF: {args.dataset_name} ...")
+    # Step 3: Process TSVs and convert audio
+    print(f"Processing dataset from {root_dir} ...")
+    
+    splits = [
+        ("train.tsv", "train", args.max_train_samples),
+        ("dev.tsv", "val", args.max_val_samples),
+        ("test.tsv", "test", args.max_test_samples),
+    ]
 
-    try:
-        cv_data = load_dataset(args.dataset_name, "tr", token=token)
-        cv_data = cv_data.cast_column("audio", Audio(sampling_rate=16000))
+    for tsv_name, split_name, max_s in splits:
+        tsv_path = os.path.join(root_dir, tsv_name)
+        process_tsv_split(
+            tsv_path=tsv_path,
+            clips_dir=clips_dir,
+            split_name=split_name,
+            output_dir=args.output_dir,
+            audio_dir=os.path.join(audio_output_base, split_name),
+            max_samples=max_s
+        )
 
-        for split in ["train", "validation", "test"]:
-            if split in cv_data:
-                data_split = cv_data[split]
-                split_name = "val" if split == "validation" else split
-                
-                max_s = args.max_train_samples if split == "train" else (args.max_val_samples if split == "validation" else args.max_test_samples)
-                if max_s:
-                    data_split = data_split.select(range(min(len(data_split), max_s)))
-
-                process_hf_split(
-                    dataset_split=data_split,
-                    split_name=split_name,
-                    output_dir=args.output_dir,
-                    audio_dir=os.path.join(audio_base_dir, split_name)
-                )
-    except Exception as e:
-        print(f"❌ Error loading dataset: {e}")
-        raise e
+    print("\n🎉 Common Voice 27.0 Turkish Dataset Preparation Complete!")
 
 if __name__ == "__main__":
     main()
