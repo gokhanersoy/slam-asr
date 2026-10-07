@@ -6,6 +6,7 @@ and generates SLAM-LLM format JSONL files: train.jsonl, val.jsonl, test.jsonl
 """
 
 import os
+import sys
 import json
 import argparse
 import torch
@@ -62,6 +63,7 @@ def main():
     parser = argparse.ArgumentParser(description="Prepare Common Voice 17.0 Turkish Dataset for SLAM-ASR")
     parser.add_argument("--dataset_name", type=str, default="mozilla-foundation/common_voice_17_0", help="HuggingFace dataset ID")
     parser.add_argument("--output_dir", type=str, default="data", help="Output directory for jsonl manifests and wavs")
+    parser.add_argument("--token", type=str, default=None, help="HuggingFace Access Token")
     parser.add_argument("--max_train_samples", type=int, default=None, help="Optional max train samples for quick experiments")
     parser.add_argument("--max_val_samples", type=int, default=None, help="Optional max val samples")
     parser.add_argument("--max_test_samples", type=int, default=None, help="Optional max test samples")
@@ -71,7 +73,23 @@ def main():
     audio_base_dir = os.path.join(args.output_dir, "audio")
 
     print(f"Loading Turkish Common Voice 17.0 dataset: {args.dataset_name} ...")
-    cv_data = load_dataset(args.dataset_name, "tr", trust_remote_code=True)
+    
+    token = args.token if args.token else True
+
+    try:
+        cv_data = load_dataset(args.dataset_name, "tr", token=token)
+    except Exception as e:
+        print("\n" + "=" * 70)
+        print("⚠️ HATA: Hugging Face Veri Setine Erişim İzni Veya Token Eksik!")
+        print("=" * 70)
+        print("Mozilla Common Voice 17.0 korumalı (gated) bir veri setidir.")
+        print("Lütfen şu adımları tamamladığınızdan emin olun:")
+        print("1. Hugging Face hesabınızla giriş yapıp şu adresteki lisans koşullarını kabul edin:")
+        print("   👉 https://huggingface.co/datasets/mozilla-foundation/common_voice_17_0")
+        print("2. Notebook üzerindeki Adım 4'te `notebook_login()` ile giriş yapın.")
+        print("=" * 70 + "\n")
+        raise e
+
     cv_data = cv_data.cast_column("audio", Audio(sampling_rate=16000))
 
     for split in ["train", "validation", "test"]:
