@@ -6,9 +6,9 @@ Bu proje, **SLAM-LLM (Speech-Language Model Framework)** çalışmasını ([arXi
 
 ## ⚡ Özellikler ve Çalışma Mantığı
 
-- **Google Drive Gerektirmez:** Kodlar doğrudan GitHub üzerinden Colab oturumuna klonlanır.
+- **Google Drive Yerel Veri Seti Desteği:** Mozilla Common Voice veri setiniz doğrudan Google Drive yolunuzdan (`cv-corpus-25.0-2026-03-09`) okunur (`train.tsv`, `dev.tsv`, `test.tsv` ve `clips/`).
 - **Otomatik Hugging Face Entegrasyonu:** Eğitim bittiğinde eğitilen model ağırlıkları (Projector + LoRA) otomatik olarak kendi Hugging Face Hub hesabınıza aktarılır (`push_to_hub.py`).
-- **Maksimum Performans:** Veri seti işleme ve önbellekleme Colab'ın yüksek hızlı yerel SSD diski üzerinde gerçekleşir.
+- **Maksimum Performans:** Ses dönüşümleri ve önbellekleme Colab'ın yüksek hızlı yerel SSD diski üzerine aktarılarak yüksek eğitim hızı elde edilir.
 
 ---
 
@@ -49,7 +49,7 @@ commonvoice_tr/
 │   │   └── speech_dataset.py          # JSONL formatlı ses-metin veri yükleyicisi
 │   └── utils/
 │       └── compute_wer.py             # Türkçe karakter normalizasyonu ve WER/CER hesabı
-├── prepare_data.py                    # HuggingFace Common Voice TR indirici & JSONL dönüştürücü
+├── prepare_data.py                    # Yerel Common Voice (TSV + clips) dönüştürücü
 ├── train.py                           # Fine-tuning başlatıcı betik
 └── evaluate.py                        # Test seti WER/CER değerlendirme betiği
 ```
@@ -62,13 +62,19 @@ commonvoice_tr/
 Notebook dosyasını açıp adımları takip edin: [`commonvoice_tr_slam_llm.ipynb`](file:///Users/gokhanersoy/Documents/GitHub/slam-asr/commonvoice_tr/commonvoice_tr_slam_llm.ipynb)
 
 ```bash
-# Kodları Colab lokal diskine indirin
+# Drive bağlayın ve repo'yu Colab ortamına indirin
+from google.colab import drive
+drive.mount('/content/drive')
+
+%cd /content
 !git clone https://github.com/gokhanersoy/slam-asr.git
 %cd /content/slam-asr/commonvoice_tr
 !pip install -q -r requirements.txt
 
-# Veriyi hazırlayın ve eğitimi başlatın
-!python prepare_data.py --output_dir data
+# Google Drive üzerindeki Common Voice klasöründen veriyi hazırlayın
+!python prepare_data.py --cv_dir "/content/drive/MyDrive/datasets/speech/ComonVoice/cv-corpus-25.0-2026-03-09" --output_dir data
+
+# Eğitimi başlatın
 !python train.py
 
 # Test edin ve Hugging Face Hub'a yükleyin
