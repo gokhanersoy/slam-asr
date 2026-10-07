@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Dataset Preparation Script for Common Voice Turkish (TR)
-Downloads Common Voice TR from HuggingFace, saves audio to disk (16kHz WAV),
+Dataset Preparation Script for Common Voice Turkish (TR) - Version 17.0
+Downloads mozilla-foundation/common_voice_17_0 from HuggingFace, saves audio to disk (16kHz WAV),
 and generates SLAM-LLM format JSONL files: train.jsonl, val.jsonl, test.jsonl
 """
 
 import os
 import json
 import argparse
+import torch
 import soundfile as sf
 import torchaudio
 from tqdm import tqdm
@@ -47,7 +48,7 @@ def process_and_export_split(dataset_split, split_name, output_dir, audio_dir):
             total_duration_sec += duration
             
             record = {
-                "key": f"CV_TR_{split_name}_{idx:06d}",
+                "key": f"CV17_TR_{split_name}_{idx:06d}",
                 "source": os.path.abspath(wav_path),
                 "target": text,
                 "duration": round(duration, 2)
@@ -58,7 +59,7 @@ def process_and_export_split(dataset_split, split_name, output_dir, audio_dir):
     print(f"[{split_name.upper()}] Exported {exported_records} items ({total_duration_sec / 3600.0:.2f} hours) -> {jsonl_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Prepare Common Voice Turkish Dataset for SLAM-ASR")
+    parser = argparse.ArgumentParser(description="Prepare Common Voice 17.0 Turkish Dataset for SLAM-ASR")
     parser.add_argument("--dataset_name", type=str, default="mozilla-foundation/common_voice_17_0", help="HuggingFace dataset ID")
     parser.add_argument("--output_dir", type=str, default="data", help="Output directory for jsonl manifests and wavs")
     parser.add_argument("--max_train_samples", type=int, default=None, help="Optional max train samples for quick experiments")
@@ -69,13 +70,8 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     audio_base_dir = os.path.join(args.output_dir, "audio")
 
-    print(f"Loading Turkish dataset: {args.dataset_name} ...")
-    try:
-        cv_data = load_dataset(args.dataset_name, "tr", trust_remote_code=True)
-    except Exception as e:
-        print(f"Fallback to common_voice_11_0: {e}")
-        cv_data = load_dataset("mozilla-foundation/common_voice_11_0", "tr", trust_remote_code=True)
-
+    print(f"Loading Turkish Common Voice 17.0 dataset: {args.dataset_name} ...")
+    cv_data = load_dataset(args.dataset_name, "tr", trust_remote_code=True)
     cv_data = cv_data.cast_column("audio", Audio(sampling_rate=16000))
 
     for split in ["train", "validation", "test"]:
@@ -98,5 +94,4 @@ def main():
             )
 
 if __name__ == "__main__":
-    import torch
     main()
