@@ -72,9 +72,15 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     audio_base_dir = os.path.join(args.output_dir, "audio")
 
+    token = args.token or os.environ.get("HF_TOKEN")
+    if not token:
+        try:
+            from google.colab import userdata
+            token = userdata.get('HF_TOKEN')
+        except Exception:
+            token = True
+
     print(f"Loading Turkish Common Voice 17.0 dataset: {args.dataset_name} ...")
-    
-    token = args.token if args.token else True
 
     try:
         cv_data = load_dataset(args.dataset_name, "tr", token=token)
@@ -86,7 +92,7 @@ def main():
         print("Lütfen şu adımları tamamladığınızdan emin olun:")
         print("1. Hugging Face hesabınızla giriş yapıp şu adresteki lisans koşullarını kabul edin:")
         print("   👉 https://huggingface.co/datasets/mozilla-foundation/common_voice_17_0")
-        print("2. Notebook üzerindeki Adım 4'te `notebook_login()` ile giriş yapın.")
+        print("2. Notebook üzerindeki Adım 4'teki Colab Secrets veya `notebook_login()` hücresini çalıştırın.")
         print("=" * 70 + "\n")
         raise e
 
