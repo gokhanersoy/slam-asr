@@ -123,8 +123,12 @@ def main(cfg: DictConfig):
                 if global_step % train_cfg.validation_interval == 0:
                     model.eval()
                     val_loss = 0.0
+                    val_steps = 0
+                    max_val_batches = getattr(train_cfg, "max_val_batches", 100)
                     with torch.no_grad():
-                        for val_batch in val_loader:
+                        for v_idx, val_batch in enumerate(val_loader):
+                            if v_idx >= max_val_batches:
+                                break
                             v_ids = val_batch["input_ids"].to(device)
                             v_mask = val_batch["attention_mask"].to(device)
                             v_mel = val_batch["audio_mel"].to(device)
@@ -140,8 +144,12 @@ def main(cfg: DictConfig):
                                     labels=v_labels
                                 )
                                 val_loss += v_out.loss.item()
+                                val_steps += 1
 
-                    val_loss /= len(val_loader)
+                            del v_out, v_ids, v_mask, v_mel, v_mmask, v_labels
+
+                    torch.cuda.empty_cache()
+                    val_loss /= max(1, val_steps)
                     print(f" validation Loss: {val_loss:.4f}")
 
                     if val_loss < best_val_loss:
