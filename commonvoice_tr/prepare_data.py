@@ -153,8 +153,8 @@ def process_tsv_split(tsv_path, clips_dir, split_name, output_dir, audio_dir, ma
 def main():
     parser = argparse.ArgumentParser(description="Prepare Common Voice 27.0 Turkish Dataset via Mozilla Data Collective")
     parser.add_argument("--api_key", type=str, default=None, help="Mozilla Data Collective API key (CV_API)")
-    parser.add_argument("--tar_path", type=str, default="data/cv27_tr.tar.gz", help="Path to save or existing dataset tar.gz")
-    parser.add_argument("--output_dir", type=str, default="data", help="Output directory for manifests and converted wavs")
+    parser.add_argument("--tar_path", type=str, default="/content/data/cv27_tr.tar.gz", help="Path to save or existing dataset tar.gz")
+    parser.add_argument("--output_dir", type=str, default="/content/data", help="Output directory for manifests and converted wavs")
     parser.add_argument("--max_train_samples", type=int, default=None, help="Optional max train samples")
     parser.add_argument("--max_val_samples", type=int, default=None, help="Optional max val samples")
     parser.add_argument("--max_test_samples", type=int, default=None, help="Optional max test samples")
