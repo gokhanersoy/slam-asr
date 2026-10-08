@@ -123,6 +123,7 @@ def main(cfg: DictConfig):
                 if global_step % 50 == 0:
                     current_lr = scheduler.get_last_lr()[0]
                     print(f"Epoch [{epoch+1}/{train_cfg.num_epochs}] Step [{step+1}/{len(train_loader)}] Loss: {step_loss_val:.4f} LR: {current_lr:.6f}")
+                    torch.cuda.empty_cache()
 
                 # Validation interval
                 if global_step % train_cfg.validation_interval == 0:
