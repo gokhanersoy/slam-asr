@@ -53,6 +53,9 @@ def setup_llm(train_config, model_config, **kwargs):
             trust_remote_code=True,
         )
 
+    if hasattr(llm, "config"):
+        llm.config.use_cache = False
+
     if train_config.freeze_llm:
         for name, param in llm.named_parameters():
             param.requires_grad = False
@@ -71,6 +74,8 @@ def setup_llm(train_config, model_config, **kwargs):
                 task_type="CAUSAL_LM",
             )
             llm = get_peft_model(llm, lora_config)
+            if hasattr(llm, "gradient_checkpointing_enable"):
+                llm.gradient_checkpointing_enable()
             llm.print_trainable_parameters()
 
     return llm
