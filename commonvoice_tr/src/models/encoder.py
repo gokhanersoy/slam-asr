@@ -11,7 +11,9 @@ class WhisperWrappedEncoder:
             x : torch.Tensor, shape = (batch_size, n_mels, n_ctx)
                 the mel spectrogram of the audio
             """
-            x = x.to(self.conv1.weight.dtype)
+            target_dtype = self.conv1.weight.dtype
+            x = x.to(dtype=target_dtype)
+            
             x = F.gelu(self.conv1(x))
             x = F.gelu(self.conv2(x))
             x = x.permute(0, 2, 1)
@@ -29,10 +31,9 @@ class WhisperWrappedEncoder:
 
         if encoder_path_hf is not None:
             from transformers import WhisperModel
-            encoder = WhisperModel.from_pretrained(encoder_path_hf, torch_dtype=torch.bfloat16).encoder
+            encoder = WhisperModel.from_pretrained(encoder_path_hf, torch_dtype=torch.float32).encoder
         else:
             import whisper
-            # If encoder_path is a standard whisper model size e.g. "openai/whisper-large-v3" or "large-v3"
             model_name = encoder_path.replace("openai/whisper-", "").replace("openai/", "")
             whisper_model = whisper.load_model(name=model_name, device='cpu')
             encoder = whisper_model.encoder

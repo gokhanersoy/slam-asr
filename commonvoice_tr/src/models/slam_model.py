@@ -135,11 +135,12 @@ class SLAMASRModel(nn.Module):
             if self.train_config.freeze_encoder:
                 self.encoder.eval()
                 with torch.no_grad():
-                    encoder_outs = self.encoder.extract_variable_length_features(audio_mel.permute(0, 2, 1))
+                    with torch.amp.autocast('cuda', enabled=False):
+                        encoder_outs = self.encoder.extract_variable_length_features(audio_mel.permute(0, 2, 1).float())
             else:
                 encoder_outs = self.encoder.extract_variable_length_features(audio_mel.permute(0, 2, 1))
 
-            encoder_outs = self.encoder_projector(encoder_outs)
+            encoder_outs = self.encoder_projector(encoder_outs.float())
 
         if hasattr(self.llm, "model") and hasattr(self.llm.model, "embed_tokens"):
             inputs_embeds = self.llm.model.embed_tokens(input_ids)
@@ -176,8 +177,9 @@ class SLAMASRModel(nn.Module):
         **kwargs,
     ):
         device = audio_mel.device
-        encoder_outs = self.encoder.extract_variable_length_features(audio_mel.permute(0, 2, 1))
-        encoder_outs = self.encoder_projector(encoder_outs)
+        with torch.amp.autocast('cuda', enabled=False):
+            encoder_outs = self.encoder.extract_variable_length_features(audio_mel.permute(0, 2, 1).float())
+        encoder_outs = self.encoder_projector(encoder_outs.float())
 
         formatted_prompt = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         prompt_ids = self.tokenizer.encode(formatted_prompt, return_tensors="pt").to(device)
