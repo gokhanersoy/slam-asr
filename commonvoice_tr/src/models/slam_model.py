@@ -150,12 +150,15 @@ class SLAMASRModel(nn.Module):
 
             encoder_outs = self.encoder_projector(encoder_outs.float())
 
+        input_ids_clean = input_ids.clone()
+        input_ids_clean[input_ids_clean < 0] = 0
+
         if hasattr(self.llm, "model") and hasattr(self.llm.model, "embed_tokens"):
-            inputs_embeds = self.llm.model.embed_tokens(input_ids)
+            inputs_embeds = self.llm.model.embed_tokens(input_ids_clean)
         elif hasattr(self.llm, "get_input_embeddings"):
-            inputs_embeds = self.llm.get_input_embeddings()(input_ids)
+            inputs_embeds = self.llm.get_input_embeddings()(input_ids_clean)
         else:
-            inputs_embeds = self.llm.model.model.embed_tokens(input_ids)
+            inputs_embeds = self.llm.model.model.embed_tokens(input_ids_clean)
 
         if modality_mask is not None and audio_mel is not None:
             encoder_outs = encoder_outs.to(inputs_embeds.dtype)
