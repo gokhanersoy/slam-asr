@@ -132,13 +132,21 @@ class SLAMASRModel(nn.Module):
         **kwargs,
     ):
         if audio_mel is not None:
+            device = audio_mel.device
+            if self.encoder is not None:
+                self.encoder.to(device)
+            if self.encoder_projector is not None:
+                self.encoder_projector.to(device)
+
             if self.train_config.freeze_encoder:
                 self.encoder.eval()
                 with torch.no_grad():
                     with torch.amp.autocast('cuda', enabled=False):
-                        encoder_outs = self.encoder.extract_variable_length_features(audio_mel.permute(0, 2, 1).float())
+                        audio_input = audio_mel.permute(0, 2, 1).to(device=device, dtype=torch.float32)
+                        encoder_outs = self.encoder.extract_variable_length_features(audio_input)
             else:
-                encoder_outs = self.encoder.extract_variable_length_features(audio_mel.permute(0, 2, 1))
+                audio_input = audio_mel.permute(0, 2, 1).to(device=device)
+                encoder_outs = self.encoder.extract_variable_length_features(audio_input)
 
             encoder_outs = self.encoder_projector(encoder_outs.float())
 
@@ -177,8 +185,14 @@ class SLAMASRModel(nn.Module):
         **kwargs,
     ):
         device = audio_mel.device
+        if self.encoder is not None:
+            self.encoder.to(device)
+        if self.encoder_projector is not None:
+            self.encoder_projector.to(device)
+
         with torch.amp.autocast('cuda', enabled=False):
-            encoder_outs = self.encoder.extract_variable_length_features(audio_mel.permute(0, 2, 1).float())
+            audio_input = audio_mel.permute(0, 2, 1).to(device=device, dtype=torch.float32)
+            encoder_outs = self.encoder.extract_variable_length_features(audio_input)
         encoder_outs = self.encoder_projector(encoder_outs.float())
 
         formatted_prompt = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"

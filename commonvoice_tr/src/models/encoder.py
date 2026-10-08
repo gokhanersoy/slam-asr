@@ -11,14 +11,20 @@ class WhisperWrappedEncoder:
             x : torch.Tensor, shape = (batch_size, n_mels, n_ctx)
                 the mel spectrogram of the audio
             """
+            device = x.device
             target_dtype = self.conv1.weight.dtype
-            x = x.to(dtype=target_dtype)
+            
+            # Ensure encoder module is on the correct CUDA device
+            if self.conv1.weight.device != device:
+                self.to(device)
+                
+            x = x.to(device=device, dtype=target_dtype)
             
             x = F.gelu(self.conv1(x))
             x = F.gelu(self.conv2(x))
             x = x.permute(0, 2, 1)
 
-            x = (x + self.positional_embedding[: x.shape[1]]).to(x.dtype)
+            x = (x + self.positional_embedding[: x.shape[1]].to(device)).to(x.dtype)
 
             for block in self.blocks:
                 x = block(x)
