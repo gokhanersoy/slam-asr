@@ -66,20 +66,22 @@ def setup_llm(train_config, model_config, **kwargs):
             param.requires_grad = False
         llm.eval()
 
-    if train_config.use_peft:
+    if getattr(train_config, "use_peft", True):
         peft_cfg = kwargs.get("peft_config", None)
-        if peft_cfg is not None:
-            target_modules = getattr(peft_cfg, "target_modules", ["q_proj", "v_proj", "k_proj", "o_proj"])
-            lora_config = LoraConfig(
-                r=getattr(peft_cfg, "r", 16),
-                lora_alpha=getattr(peft_cfg, "lora_alpha", 32),
-                target_modules=target_modules,
-                lora_dropout=getattr(peft_cfg, "lora_dropout", 0.05),
-                bias=getattr(peft_cfg, "bias", "none"),
-                task_type="CAUSAL_LM",
-            )
-            llm = get_peft_model(llm, lora_config)
-            llm.print_trainable_parameters()
+        target_modules = getattr(peft_cfg, "target_modules", ["q_proj", "v_proj", "k_proj", "o_proj"]) if peft_cfg is not None else ["q_proj", "v_proj", "k_proj", "o_proj"]
+        r = getattr(peft_cfg, "r", 16) if peft_cfg is not None else 16
+        lora_alpha = getattr(peft_cfg, "lora_alpha", 32) if peft_cfg is not None else 32
+        lora_dropout = getattr(peft_cfg, "lora_dropout", 0.05) if peft_cfg is not None else 0.05
+        lora_config = LoraConfig(
+            r=r,
+            lora_alpha=lora_alpha,
+            target_modules=target_modules,
+            lora_dropout=lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        llm = get_peft_model(llm, lora_config)
+        llm.print_trainable_parameters()
 
     return llm
 
@@ -105,7 +107,8 @@ def model_factory(train_config, model_config, **kwargs):
     ckpt_path = kwargs.get("ckpt_path", None)
     if ckpt_path is not None and os.path.exists(ckpt_path):
         ckpt_dict = torch.load(ckpt_path, map_location="cpu")
-        model.load_state_dict(ckpt_dict, strict=False)
+        load_res = model.load_state_dict(ckpt_dict, strict=False)
+        print(f"Loaded checkpoint from {ckpt_path} (Missing keys: {len(load_res.missing_keys)}, Unexpected keys: {len(load_res.unexpected_keys)})")
 
     return model, tokenizer
 

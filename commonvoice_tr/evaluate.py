@@ -37,6 +37,7 @@ def main():
     model, tokenizer = model_factory(
         train_config=train_cfg,
         model_config=model_cfg,
+        peft_config=cfg.get("peft_config", None),
         ckpt_path=args.checkpoint_path if os.path.exists(args.checkpoint_path) else None
     )
     model.to(device)
