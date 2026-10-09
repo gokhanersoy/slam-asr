@@ -43,7 +43,11 @@ class SpeechDatasetJsonl(torch.utils.data.Dataset):
         key = data_dict.get("key", str(index))
 
         audio_raw = whisper.load_audio(audio_path)
-        audio_raw = whisper.pad_or_trim(audio_raw)
+        if len(audio_raw) > 480000:
+            audio_raw = audio_raw[:480000]
+        elif len(audio_raw) < 8000:
+            audio_raw = np.pad(audio_raw, (0, 8000 - len(audio_raw)))
+
         audio_mel = whisper.log_mel_spectrogram(audio_raw, n_mels=self.mel_size).permute(1, 0)
         
         # Calculate expected audio tokens after 2x whisper downsampling & 5x linear stacking downsampling
@@ -123,7 +127,15 @@ class SpeechDatasetJsonl(torch.utils.data.Dataset):
             for idx in range(len(samples))
         ])
 
-        audio_mel = torch.stack([s["audio_mel"] for s in samples])
+        max_mel_len = max(s["audio_mel"].shape[0] for s in samples)
+        padded_mels = []
+        for s in samples:
+            mel = s["audio_mel"]
+            if mel.shape[0] < max_mel_len:
+                pad_tensor = torch.zeros((max_mel_len - mel.shape[0], mel.shape[1]), dtype=mel.dtype)
+                mel = torch.cat([mel, pad_tensor], dim=0)
+            padded_mels.append(mel)
+        audio_mel = torch.stack(padded_mels)
 
         modality_mask = torch.zeros_like(attention_mask, dtype=torch.bool)
         for idx in range(len(samples)):

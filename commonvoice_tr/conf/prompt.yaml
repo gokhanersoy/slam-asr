@@ -25,9 +25,10 @@ dataset_config:
 train_config:
   model_name: "slam_asr_tr"
   output_dir: "checkpoints/slam_qwen_tr"
-  batch_size_training: 4
-  val_batch_size: 4
-  gradient_accumulation_steps: 4
+  batch_size_training: 2
+  val_batch_size: 2
+  max_val_batches: 100
+  gradient_accumulation_steps: 8
   num_epochs: 5
   warmup_steps: 500
   total_steps: 10000

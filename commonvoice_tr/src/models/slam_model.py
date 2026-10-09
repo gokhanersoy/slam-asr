@@ -149,12 +149,13 @@ class SLAMASRModel(nn.Module):
             if self.train_config.freeze_encoder:
                 self.encoder.eval()
                 with torch.no_grad():
-                    with torch.amp.autocast('cuda', enabled=False):
-                        audio_input = audio_mel.permute(0, 2, 1).to(device=device, dtype=torch.float32)
+                    with torch.amp.autocast('cuda', enabled=self.train_config.use_fp16):
+                        audio_input = audio_mel.permute(0, 2, 1).to(device=device)
                         encoder_outs = self.encoder.extract_variable_length_features(audio_input)
             else:
-                audio_input = audio_mel.permute(0, 2, 1).to(device=device)
-                encoder_outs = self.encoder.extract_variable_length_features(audio_input)
+                with torch.amp.autocast('cuda', enabled=self.train_config.use_fp16):
+                    audio_input = audio_mel.permute(0, 2, 1).to(device=device)
+                    encoder_outs = self.encoder.extract_variable_length_features(audio_input)
 
             encoder_outs = self.encoder_projector(encoder_outs.float())
 
@@ -173,13 +174,11 @@ class SLAMASRModel(nn.Module):
             modality_mask_start_indices = (modality_mask == True).float().argmax(dim=1)
             modality_lengths = torch.clamp(modality_mask.sum(dim=1), max=encoder_outs.shape[1]).tolist()
 
-            encoder_outs_pad = torch.zeros_like(inputs_embeds)
+            inputs_embeds = inputs_embeds.clone()
             for i in range(encoder_outs.shape[0]):
                 length = min(modality_lengths[i], encoder_outs.shape[1])
                 start_idx = modality_mask_start_indices[i]
-                encoder_outs_pad[i, start_idx:start_idx + length] = encoder_outs[i, :length]
-
-            inputs_embeds = encoder_outs_pad + inputs_embeds * (~modality_mask[:, :, None])
+                inputs_embeds[i, start_idx : start_idx + length] = encoder_outs[i, :length]
 
         if kwargs.get("inference_mode", False):
             return inputs_embeds, attention_mask
