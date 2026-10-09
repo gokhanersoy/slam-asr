@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--config_path", type=str, default="conf/prompt.yaml", help="Path to prompt.yaml config file")
     parser.add_argument("--checkpoint_path", type=str, default="checkpoints/slam_qwen_tr/best_checkpoint.pt", help="Path to checkpoint file")
     parser.add_argument("--output_file", type=str, default="evaluation_results.json", help="Output file for evaluation predictions")
+    parser.add_argument("--max_samples", type=int, default=None, help="Optional limit on number of test samples to evaluate")
     args = parser.parse_args()
 
     cfg = OmegaConf.load(args.config_path)
@@ -43,6 +44,10 @@ def main():
 
     # Load Test Dataset
     test_dataset = get_speech_dataset(dataset_cfg, tokenizer, split="test")
+    if args.max_samples is not None and args.max_samples < len(test_dataset.data_list):
+        test_dataset.data_list = test_dataset.data_list[:args.max_samples]
+        print(f"Subsetting test set to first {args.max_samples} samples.")
+
     test_loader = DataLoader(
         test_dataset,
         batch_size=getattr(train_cfg, "val_batch_size", 4),

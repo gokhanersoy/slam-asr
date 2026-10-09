@@ -48,6 +48,16 @@ def main(cfg: DictConfig):
     train_dataset = get_speech_dataset(dataset_cfg, tokenizer, split="train")
     val_dataset = get_speech_dataset(dataset_cfg, tokenizer, split="val")
 
+    max_tr_s = getattr(dataset_cfg, "max_train_samples", None)
+    if max_tr_s is not None and max_tr_s < len(train_dataset.data_list):
+        train_dataset.data_list = train_dataset.data_list[:max_tr_s]
+        print(f"Subsetting train set to {max_tr_s} samples.")
+
+    max_v_s = getattr(dataset_cfg, "max_val_samples", None)
+    if max_v_s is not None and max_v_s < len(val_dataset.data_list):
+        val_dataset.data_list = val_dataset.data_list[:max_v_s]
+        print(f"Subsetting val set to {max_v_s} samples.")
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=train_cfg.batch_size_training,
