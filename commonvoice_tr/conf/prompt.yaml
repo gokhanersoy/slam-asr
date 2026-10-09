@@ -25,10 +25,9 @@ dataset_config:
 train_config:
   model_name: "slam_asr_tr"
   output_dir: "checkpoints/slam_qwen_tr"
-  batch_size_training: 2
-  val_batch_size: 2
-  max_val_batches: 100
-  gradient_accumulation_steps: 8
+  batch_size_training: 4
+  val_batch_size: 4
+  gradient_accumulation_steps: 4
   num_epochs: 5
   warmup_steps: 500
   total_steps: 10000
@@ -38,6 +37,7 @@ train_config:
   freeze_llm: true
   use_peft: true
   use_fp16: true
+  use_gradient_checkpointing: true
   quantization: true # 4-bit / 8-bit quantization for Colab T4/V100/A100
   seed: 42
   num_workers_dataloader: 2

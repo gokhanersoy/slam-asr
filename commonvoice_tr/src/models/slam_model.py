@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, List
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import LoraConfig, get_peft_model, PeftModel
+from peft import LoraConfig, get_peft_model, PeftModel, prepare_model_for_kbit_training
 
 from src.models.encoder import WhisperWrappedEncoder
 from src.models.projector import EncoderProjectorConcat
@@ -30,6 +30,7 @@ def setup_encoder(train_config, model_config, **kwargs):
 def setup_llm(train_config, model_config, **kwargs):
     quantization = getattr(train_config, "quantization", False)
     use_fp16 = getattr(train_config, "use_fp16", True)
+    use_gradient_checkpointing = getattr(train_config, "use_gradient_checkpointing", True)
     torch_dtype = torch.float16 if use_fp16 else torch.bfloat16
 
     if quantization:
@@ -45,6 +46,8 @@ def setup_llm(train_config, model_config, **kwargs):
             device_map="auto",
             trust_remote_code=True,
         )
+        if use_gradient_checkpointing:
+            llm = prepare_model_for_kbit_training(llm, use_gradient_checkpointing=True)
     else:
         llm = AutoModelForCausalLM.from_pretrained(
             model_config.llm_path,
@@ -52,6 +55,8 @@ def setup_llm(train_config, model_config, **kwargs):
             device_map="auto" if torch.cuda.is_available() else None,
             trust_remote_code=True,
         )
+        if use_gradient_checkpointing and hasattr(llm, "gradient_checkpointing_enable"):
+            llm.gradient_checkpointing_enable()
 
     if hasattr(llm, "config"):
         llm.config.use_cache = False
@@ -74,8 +79,6 @@ def setup_llm(train_config, model_config, **kwargs):
                 task_type="CAUSAL_LM",
             )
             llm = get_peft_model(llm, lora_config)
-            if hasattr(llm, "gradient_checkpointing_enable"):
-                llm.gradient_checkpointing_enable()
             llm.print_trainable_parameters()
 
     return llm

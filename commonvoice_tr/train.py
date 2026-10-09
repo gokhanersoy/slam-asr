@@ -7,6 +7,7 @@ Trains the Linear Projector and LoRA weights on Qwen2.5 / Llama-3 with Whisper-l
 import os
 import sys
 import time
+import gc
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
@@ -17,10 +18,10 @@ from src.models.slam_model import model_factory
 from src.datasets.speech_dataset import get_speech_dataset
 from src.utils.compute_wer import compute_wer_cer
 
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 @hydra.main(config_path="conf", config_name="prompt", version_base=None)
 def main(cfg: DictConfig):
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
     print("=" * 60)
     print("SLAM-ASR Training Start (Turkish Common Voice)")
     print("=" * 60)
@@ -56,7 +57,7 @@ def main(cfg: DictConfig):
     )
     val_loader = DataLoader(
         val_dataset,
-        batch_size=getattr(train_cfg, "val_batch_size", 2),
+        batch_size=getattr(train_cfg, "val_batch_size", 4),
         shuffle=False,
         collate_fn=val_dataset.collator,
         num_workers=getattr(train_cfg, "num_workers_dataloader", 2),
@@ -108,10 +109,7 @@ def main(cfg: DictConfig):
                 loss = outputs.loss / train_cfg.gradient_accumulation_steps
 
             scaler.scale(loss).backward()
-            step_loss_val = loss.item() * train_cfg.gradient_accumulation_steps
-            total_loss += step_loss_val
-
-            del outputs, input_ids, attention_mask, audio_mel, modality_mask, labels
+            total_loss += loss.item() * train_cfg.gradient_accumulation_steps
 
             if (step + 1) % train_cfg.gradient_accumulation_steps == 0 or (step + 1) == len(train_loader):
                 scaler.step(optimizer)
@@ -122,19 +120,16 @@ def main(cfg: DictConfig):
 
                 if global_step % 50 == 0:
                     current_lr = scheduler.get_last_lr()[0]
-                    print(f"Epoch [{epoch+1}/{train_cfg.num_epochs}] Step [{step+1}/{len(train_loader)}] Loss: {step_loss_val:.4f} LR: {current_lr:.6f}")
-                    torch.cuda.empty_cache()
+                    print(f"Epoch [{epoch+1}/{train_cfg.num_epochs}] Step [{step+1}/{len(train_loader)}] Loss: {loss.item()*train_cfg.gradient_accumulation_steps:.4f} LR: {current_lr:.6f}")
 
                 # Validation interval
                 if global_step % train_cfg.validation_interval == 0:
                     model.eval()
                     val_loss = 0.0
-                    val_steps = 0
-                    max_val_batches = getattr(train_cfg, "max_val_batches", 100)
+                    gc.collect()
+                    torch.cuda.empty_cache()
                     with torch.no_grad():
-                        for v_idx, val_batch in enumerate(val_loader):
-                            if v_idx >= max_val_batches:
-                                break
+                        for val_batch in val_loader:
                             v_ids = val_batch["input_ids"].to(device)
                             v_mask = val_batch["attention_mask"].to(device)
                             v_mel = val_batch["audio_mel"].to(device)
@@ -150,12 +145,9 @@ def main(cfg: DictConfig):
                                     labels=v_labels
                                 )
                                 val_loss += v_out.loss.item()
-                                val_steps += 1
+                                del v_out, v_ids, v_mask, v_mel, v_mmask, v_labels
 
-                            del v_out, v_ids, v_mask, v_mel, v_mmask, v_labels
-
-                    torch.cuda.empty_cache()
-                    val_loss /= max(1, val_steps)
+                    val_loss /= len(val_loader)
                     print(f" validation Loss: {val_loss:.4f}")
 
                     if val_loss < best_val_loss:
@@ -164,6 +156,8 @@ def main(cfg: DictConfig):
                         torch.save(model.state_dict(), ckpt_save_path)
                         print(f"--> Saved best model checkpoint to {ckpt_save_path}")
 
+                    gc.collect()
+                    torch.cuda.empty_cache()
                     model.train()
 
         elapsed = time.time() - start_time
